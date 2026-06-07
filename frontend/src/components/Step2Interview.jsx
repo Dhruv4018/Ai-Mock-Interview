@@ -26,7 +26,9 @@ const Step2Interview = ({ interviewData, onFinish }) => {
   const [voiceGender, setVoiceGender] = useState("female");
   const [subtitle, setSubtitle] = useState("")
   const isListeningRef = useRef(false)   // 🔥 NEW
-const isMicOnRef = useRef(true)    
+  const isAIPlayingRef = useRef(false);
+
+  const isMicOnRef = useRef(true)
 
   const recognitionRef = useRef(null)
   const videoRef = useRef(null);
@@ -61,7 +63,7 @@ const isMicOnRef = useRef(true)
         return
       }
 
-      selectdVoice(voices[0]);
+      setSelectedVoice(voices[0]);
       setVoiceGender("female");
 
 
@@ -99,6 +101,7 @@ const isMicOnRef = useRef(true)
       utterance.volume = 1;
 
       utterance.onstart = () => {
+        isAIPlayingRef.current = true;   // ADD
         setIsAIPlaying(true);
         stopMic()
         videoRef.current?.play();
@@ -120,19 +123,20 @@ const isMicOnRef = useRef(true)
       //   }, 300)
       // };
       utterance.onend = () => {
-  videoRef.current?.pause();
-  videoRef.current.currentTime = 0;
-  setIsAIPlaying(false);
+        isAIPlayingRef.current = false;
+        videoRef.current?.pause();
+        videoRef.current.currentTime = 0;
+        setIsAIPlaying(false);
 
-  if (isMicOnRef.current) {  // 🔥 FIX
-    startMic();
-  }
+        if (isMicOnRef.current) {  // 🔥 FIX
+          startMic();
+        }
 
-  setTimeout(() => {
-    setSubtitle("");
-    resolve();
-  }, 300);
-};
+        setTimeout(() => {
+          setSubtitle("");
+          resolve();
+        }, 300);
+      };
       setSubtitle(text);
 
       window.speechSynthesis.speak(utterance)
@@ -228,76 +232,81 @@ const isMicOnRef = useRef(true)
   //   recognitionRef.current = recognition;
   // }, []);
 
- useEffect(() => {
-  if (!("webkitSpeechRecognition" in window)) return;
+  useEffect(() => {
+    if (!("webkitSpeechRecognition" in window)) return;
 
-  const recognition = new window.webkitSpeechRecognition();
+    const recognition = new window.webkitSpeechRecognition();
 
-  recognition.lang = "en-US";
-  recognition.continuous = false; // 🔥 IMPORTANT FIX
-  recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.continuous = false; // 🔥 IMPORTANT FIX
+    recognition.interimResults = false;
 
-  recognition.onresult = (event) => {
-    const transcript =
-      event.results[event.results.length - 1][0].transcript;
+    recognition.onresult = (event) => {
+      const transcript =
+        event.results[event.results.length - 1][0].transcript;
 
-    setAnswer((prev) => prev + " " + transcript);
-  };
+      setAnswer((prev) => prev + " " + transcript);
+    };
 
-  recognition.onend = () => {
-    isListeningRef.current = false;
+    recognition.onend = () => {
+      isListeningRef.current = false;
 
-    // 🔥 FIX: state ki jagah ref use karo
-    if (isMicOnRef.current && !isAIPlaying) {
-      setTimeout(() => {
-        startMic();
-      }, 200);
+      if (isMicOnRef.current && !isAIPlayingRef.current) {
+        setTimeout(() => {
+          startMic();
+        }, 200);
+      }
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error === "aborted") return;
+
+      console.log("Speech error:", e.error);
+      isListeningRef.current = false;
+    };
+
+    recognitionRef.current = recognition;
+  }, []);
+  const startMic = () => {
+    if (!recognitionRef.current) return;
+
+    if (isAIPlayingRef.current) return;
+
+    if (isListeningRef.current) return;
+
+    try {
+      recognitionRef.current.start();
+      isListeningRef.current = true;
+    } catch (error) {
+      console.log(error);
     }
   };
 
-  recognition.onerror = (e) => {
-    console.log("Speech error:", e);
+
+  const stopMic = () => {
+    if (!recognitionRef.current) return;
+
+    try {
+      recognitionRef.current.stop();
+      // abort() remove kar diya
+    } catch (e) {
+      console.log(e);
+    }
+
     isListeningRef.current = false;
   };
 
-  recognitionRef.current = recognition;
-
-}, []);
-  const startMic = () => {
-  if (!recognitionRef.current || isAIPlaying) return;
-
-  if (isListeningRef.current) return; // 🔥 prevent duplicate
-
-  try {
-    recognitionRef.current.start();
-    isListeningRef.current = true;
-  } catch (error) {
-    console.log(error);
-  }
-};
-
-  const stopMic = () => {
-  if (recognitionRef.current) {
-    try {
-      recognitionRef.current.stop();
-      recognitionRef.current.abort(); // 🔥 force stop
-    } catch (e) {}
-
-    isListeningRef.current = false;
-  }
-};
-
   const toggleMic = () => {
-  if (isMicOnRef.current) {
-    stopMic();
-    isMicOnRef.current = false;
-    setIMicOn(false);
-  } else {
-    isMicOnRef.current = true;
-    setIMicOn(true);
-    startMic();
-  }
-};
+    if (isMicOnRef.current) {
+      stopMic();
+      isMicOnRef.current = false;
+      setIMicOn(false);
+    } else {
+      isMicOnRef.current = true;
+      setIMicOn(true);
+      startMic();
+    }
+  };
   const submitAnswer = async () => {
     if (isSubmitting) return;
     stopMic();
@@ -307,7 +316,7 @@ const isMicOnRef = useRef(true)
       const result = await axios.post(ServerUrl + "/api/interview/submit-answer", { interviewId, questionIndex: currentIndex, answer, timeTaken: currentQuestion.timeLimit - timeLeft }, { withCredentials: true })
 
       setFeedback(result.data.feedback)
-      speakText(result.data.feedback)
+      await speakText(result.data.feedback)
       setIsSubmitting(false)
     } catch (error) {
       console.log(error)
@@ -329,9 +338,8 @@ const isMicOnRef = useRef(true)
 
     setCurrentIndex(currentIndex + 1);
     setTimeout(() => {
-      if (isMicOn) startMic();
+      if (isMicOnRef.current) startMic();
     }, 500)
-
   }
 
   const finishInterview = async () => {
@@ -368,32 +376,32 @@ const isMicOnRef = useRef(true)
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current.abort();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) { }
       }
 
       window.speechSynthesis.cancel();
     };
-  }, [])
-
+  }, []);
   const handleEndInterview = async () => {
-  const confirmEnd = window.confirm("Are you sure you want to end the interview?");
-  if (!confirmEnd) return;
+    const confirmEnd = window.confirm("Are you sure you want to end the interview?");
+    if (!confirmEnd) return;
 
-  stopMic();
-  setIMicOn(false);
+    stopMic();
+    setIMicOn(false);
 
-  
-  if (answer && !feedback) {
-    await submitAnswer();
-  }
 
-  
-  await speakText("Your interview has been ended. Redirecting to your report.");
+    if (answer && !feedback) {
+      await submitAnswer();
+    }
 
-  
-  finishInterview();
-};
+
+    await speakText("Your interview has been ended. Redirecting to your report.");
+
+
+    finishInterview();
+  };
   return (
     <div className='min-h-screen bg-linear-to-br from-emerald-50 via-white to-teal-100 flex items-center justify-center p-4 sm:p-6 '>
 
