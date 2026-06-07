@@ -11,7 +11,7 @@ import Pricing from './page/Pricing'
 import InterviewReport from './page/InterviewReport'
 
 
-export const ServerUrl = "http://localhost:8000"
+export const ServerUrl = "https://ai-mock-interview-96bw.onrender.com"
 
 const App = () => {
   const dispatch = useDispatch()
