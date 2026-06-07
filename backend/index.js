@@ -12,7 +12,7 @@ const app = express()
 const port = process.env.PORT || 9000
 
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: "https://ai-mock-interview-frontend-iumk.onrender.com",
     credentials: true
 }))
 
